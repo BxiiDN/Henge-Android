@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">Henge Android Dev</string>
+    <string name="run_test">Jalankan uji perangkat</string>
+    <string name="copy_result">Salin hasil</string>
+    <string name="share_result">Bagikan hasil</string>
+    <string name="running">Menguji instruksi ARM64 dan memeriksa Vulkan…</string>
+</resources>

@@ -1,3 +1,5 @@
+> **Android fork status:** this branch adds an ARM64 Android/Linux CPU host and a diagnostic APK for phones and tablets. **macOS does not boot on Android yet.** See [Android build, tests and remaining work](docs/android-port.md). The description and iOS download links below describe the upstream Apple version.
+
 <p align="center">
   <img src="docs/icon.png" width="120" height="120" alt="Henge">
 </p>

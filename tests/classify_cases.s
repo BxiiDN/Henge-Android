@@ -1,10 +1,12 @@
+#include "asm_compat.h"
 // One instruction per case, in the same order as the expectations in test_classify.c.
 // The assembler produces the encodings, so the test does not trust hand-written hex.
+    .arch armv8.4-a
     .text
     .p2align 2
-    .globl _hv_classify_cases
-    .globl _hv_classify_cases_end
-_hv_classify_cases:
+    .globl HV_SYMBOL(hv_classify_cases)
+    .globl HV_SYMBOL(hv_classify_cases_end)
+HV_SYMBOL(hv_classify_cases):
     add x0, x1, x2              // copy
     madd x3, x4, x5, x6         // copy
     fadd d0, d1, d2             // copy
@@ -12,7 +14,7 @@ _hv_classify_cases:
     nop                         // copy
     bti c                       // copy
     adr x0, .                   // pcrel
-    adrp x1, _hv_classify_cases@PAGE // pcrel
+    adrp x1, HV_PAGE(HV_SYMBOL(hv_classify_cases)) // pcrel
     b .                         // branch
     bl .                        // branch
     b.ne .                      // branch
@@ -48,4 +50,8 @@ _hv_classify_cases:
     xpaci x2                    // pac
     pacga x3, x4, x5            // pac
     udf #0                      // undefined
-_hv_classify_cases_end:
+HV_SYMBOL(hv_classify_cases_end):
+
+#if defined(__ELF__)
+.section .note.GNU-stack,"",%progbits
+#endif

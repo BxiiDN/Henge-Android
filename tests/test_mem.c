@@ -190,7 +190,21 @@ int main(void) {
             seed_cpu(&init, i + 11, (uint64_t)(uintptr_t)stack + STACK_SIZE / 2);
             init.x[0] = (uint64_t)(uintptr_t)data;
             data_seed = i + 3;
-            run_native(p, &init, &native, reset_data);
+            if (!strcmp(p->name, "dczva")) {
+                /* The virtual Mac advertises 64 bytes. A Linux host (including
+                   QEMU's max CPU) may have a different native DC ZVA size. */
+                reset_data();
+                native = init;
+                native.x[1] = init.x[0] + 100;
+                native.x[6] = init.x[0] + 4103;
+                native.x[15] = init.x[0] + 8192;
+                memset(data + 64, 0, 64);
+                memset(data + 4096, 0, 64);
+                memset(data + 8192, 0, 64);
+                memcpy(&native.x[2], data + 64, 8);
+                memcpy(&native.x[3], data + 120, 8);
+                memcpy(&native.x[4], data + 128, 8);
+            } else run_native(p, &init, &native, reset_data);
             memcpy(native_data, data, DATA_SIZE);
             reset_data();
             m.stat_slow_mem = 0;

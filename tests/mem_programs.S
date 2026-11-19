@@ -1,3 +1,4 @@
+#include "asm_compat.h"
 // Load/store programs. x0 points at a 64 KB data buffer (16 KB aligned); SP is
 // in a separate stack buffer. test_mem.c compares registers and the data buffer.
 #include "harness.h"
@@ -5,9 +6,9 @@
     .arch armv8.4-a
     .text
     .p2align 14
-    .globl _mem_programs_begin
-    .globl _mem_programs_finish
-_mem_programs_begin:
+    .globl HV_SYMBOL(mem_programs_begin)
+    .globl HV_SYMBOL(mem_programs_finish)
+HV_SYMBOL(mem_programs_begin):
 
 PROGRAM single
     str x1, [x0]
@@ -369,4 +370,8 @@ PROGRAM mmio
 END mmio
 
     .p2align 14
-_mem_programs_finish:
+HV_SYMBOL(mem_programs_finish):
+
+#if defined(__ELF__)
+.section .note.GNU-stack,"",%progbits
+#endif

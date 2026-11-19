@@ -1,6 +1,6 @@
 #include "harness.h"
 
-#include <mach/mach_time.h>
+#include "platform.h"
 #include <stdlib.h>
 
 DECLARE_PROGRAM(p_svc);
@@ -120,9 +120,13 @@ int main(void) {
         check("sysregs", "CNTV_CVAL", c.x[21], 0x123);
         check("sysregs", "CNTV_CTL ISTATUS", c.x[23], 5);
     }
+#ifdef __APPLE__
     mach_timebase_info_data_t tb;
     mach_timebase_info(&tb);
     check("host", "mach_absolute_time is 24 MHz (timebase 125/3)", (uint64_t)tb.numer * 1000 + tb.denom, 125003);
+#else
+    check("host", "one second is 24 MHz ticks", hv_ticks_from_timespec((struct timespec){1, 0}), 24000000);
+#endif
 
     static const TestProgram irq = TEST_PROGRAM(p_irq);
     m.percpu[0].irq_line = 1;

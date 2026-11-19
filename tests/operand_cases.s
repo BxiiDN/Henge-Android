@@ -1,10 +1,11 @@
+#include "asm_compat.h"
 // Pairs of words: an instruction, then the hv_gpr_fields mask it should give.
 // RD=1 RN=2 RM=4 RA=8 RD_SP=16 RN_SP=32
     .text
     .p2align 2
-    .globl _hv_operand_cases
-    .globl _hv_operand_cases_end
-_hv_operand_cases:
+    .globl HV_SYMBOL(hv_operand_cases)
+    .globl HV_SYMBOL(hv_operand_cases_end)
+HV_SYMBOL(hv_operand_cases):
     add x0, sp, #16
     .word 1|2|16|32
     adds x0, sp, #16
@@ -78,4 +79,8 @@ _hv_operand_cases:
     .word 2
     setf8 w28
     .word 2
-_hv_operand_cases_end:
+HV_SYMBOL(hv_operand_cases_end):
+
+#if defined(__ELF__)
+.section .note.GNU-stack,"",%progbits
+#endif

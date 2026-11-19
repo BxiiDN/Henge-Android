@@ -1,3 +1,4 @@
+#include "asm_compat.h"
 // Running a test program natively with every register taken from a HvCpu.
 //
 // hv_native_run(HvCpu *cpu, void *entry) saves the host state and jumps to a
@@ -8,12 +9,13 @@
 
     .text
     .p2align 2
-    .globl _hv_native_run
-    .globl _hv_native_return
-    .globl _hv_native_cpu
+    .globl HV_SYMBOL(hv_native_run)
+    .globl HV_SYMBOL(hv_native_return)
+    .globl HV_SYMBOL(hv_native_cpu)
 
-_hv_native_run:
-    stp x29, x30, [sp, #-160]!
+HV_SYMBOL(hv_native_run):
+    stp x29, x30, [sp, #-176]!
+    str x18, [sp, #160]
     stp x19, x20, [sp, #16]
     stp x21, x22, [sp, #32]
     stp x23, x24, [sp, #48]
@@ -23,17 +25,17 @@ _hv_native_run:
     stp d10, d11, [sp, #112]
     stp d12, d13, [sp, #128]
     stp d14, d15, [sp, #144]
-    adrp x9, _hv_native_cpu@PAGE
-    add x9, x9, _hv_native_cpu@PAGEOFF
+    adrp x9, HV_PAGE(HV_SYMBOL(hv_native_cpu))
+    add x9, x9, HV_PAGEOFF(HV_SYMBOL(hv_native_cpu))
     str x0, [x9]
     mov x10, sp
     str x10, [x9, #8]
     mov x28, x0
     br x1
 
-_hv_native_return:
-    adrp x9, _hv_native_cpu@PAGE
-    add x9, x9, _hv_native_cpu@PAGEOFF
+HV_SYMBOL(hv_native_return):
+    adrp x9, HV_PAGE(HV_SYMBOL(hv_native_cpu))
+    add x9, x9, HV_PAGEOFF(HV_SYMBOL(hv_native_cpu))
     ldr x10, [x9, #8]
     mov sp, x10
     ldp d14, d15, [sp, #144]
@@ -44,12 +46,17 @@ _hv_native_return:
     ldp x25, x26, [sp, #64]
     ldp x23, x24, [sp, #48]
     ldp x21, x22, [sp, #32]
+    ldr x18, [sp, #160]
     ldp x19, x20, [sp, #16]
-    ldp x29, x30, [sp], #160
+    ldp x29, x30, [sp], #176
     ret
 
     .data
     .p2align 3
-_hv_native_cpu:
+HV_SYMBOL(hv_native_cpu):
     .quad 0     // HvCpu *
     .quad 0     // host SP
+
+#if defined(__ELF__)
+.section .note.GNU-stack,"",%progbits
+#endif

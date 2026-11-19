@@ -1,3 +1,4 @@
+#include "asm_compat.h"
 // Exceptions and system registers, run through the JIT only (they need EL1).
 // The vector table records ESR, FAR, ELR, SPSR in x20..x23, counts exceptions
 // in x24 and puts the vector offset in x25. Synchronous faults resume at
@@ -8,9 +9,9 @@
     .arch armv8.4-a
     .text
     .p2align 14
-    .globl _exc_programs_begin
-    .globl _exc_programs_finish
-_exc_programs_begin:
+    .globl HV_SYMBOL(exc_programs_begin)
+    .globl HV_SYMBOL(exc_programs_finish)
+HV_SYMBOL(exc_programs_begin):
 
 .macro VECTOR off
     .p2align 7
@@ -244,4 +245,8 @@ PROGRAM p_smc_nomaint
 END p_smc_nomaint
 
     .p2align 14
-_exc_programs_finish:
+HV_SYMBOL(exc_programs_finish):
+
+#if defined(__ELF__)
+.section .note.GNU-stack,"",%progbits
+#endif

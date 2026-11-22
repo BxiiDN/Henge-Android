@@ -65,3 +65,52 @@ Java_io_github_bxiidn_henge_MainActivity_nativeDiagnostics(JNIEnv *env, jclass c
     snprintf(report, sizeof report, "%s\n\n%s", cpu, gpu);
     return (*env)->NewStringUTF(env, report);
 }
+
+#include "headless.h"
+static _Atomic int boot_cancel;
+static pthread_mutex_t serial_lock = PTHREAD_MUTEX_INITIALIZER;
+static char boot_serial[32768];
+static size_t boot_serial_used;
+static void live_serial(void *unused, uint8_t c) {
+    (void)unused;
+    pthread_mutex_lock(&serial_lock);
+    if (boot_serial_used + 1 < sizeof boot_serial) {
+        boot_serial[boot_serial_used++] = (char)c;
+        boot_serial[boot_serial_used] = 0;
+    }
+    pthread_mutex_unlock(&serial_lock);
+}
+JNIEXPORT void JNICALL Java_io_github_bxiidn_henge_BootActivity_nativePrepare(JNIEnv *env, jclass cls) {
+    (void)env; (void)cls;
+    atomic_store(&boot_cancel, 0);
+    pthread_mutex_lock(&serial_lock);
+    boot_serial[0] = 0; boot_serial_used = 0;
+    pthread_mutex_unlock(&serial_lock);
+}
+JNIEXPORT void JNICALL Java_io_github_bxiidn_henge_BootActivity_nativeStop(JNIEnv *env, jclass cls) {
+    (void)env; (void)cls; atomic_store(&boot_cancel, 1);
+}
+JNIEXPORT jstring JNICALL Java_io_github_bxiidn_henge_BootActivity_nativeSerial(JNIEnv *env, jclass cls) {
+    (void)cls;
+    pthread_mutex_lock(&serial_lock);
+    jstring text = (*env)->NewStringUTF(env, boot_serial);
+    pthread_mutex_unlock(&serial_lock);
+    return text;
+}
+JNIEXPORT jstring JNICALL Java_io_github_bxiidn_henge_BootActivity_nativeBoot(
+    JNIEnv *env, jclass cls, jint rom, jint disk, jint aux, jint ram,
+    jlong ecid, jlong seed, jboolean selftest) {
+    (void)cls;
+    HvHeadlessConfig cfg = {.rom_fd=rom, .disk_fd=disk, .aux_fd=aux,
+        .ram_mb=(unsigned)ram, .timeout_ms=selftest ? 5000 : 30000,
+        .ecid=(uint64_t)ecid, .seed=(uint64_t)seed, .aux_offset=16384,
+        .selftest=selftest, .serial_output=live_serial};
+    char *report = malloc(40000);
+    if (!report) return (*env)->NewStringUTF(env, "Memori laporan tidak cukup.");
+    pthread_mutex_lock(&engine_lock);
+    hv_headless_run(&cfg, &boot_cancel, report, 40000);
+    pthread_mutex_unlock(&engine_lock);
+    jstring result = (*env)->NewStringUTF(env, report);
+    free(report);
+    return result;
+}

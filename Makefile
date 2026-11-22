@@ -78,11 +78,11 @@ $(B)/%.o: devices/%.c devices/*.h core/*.h host/*.h | $(B)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 $(B)/test_classify: tests/test_classify.c tests/classify_cases.s $(B)/classify.o
-	$(CC) $(CFLAGS) $^ -o $@
+	$(CC) $(CFLAGS) tests/test_classify.c -x assembler-with-cpp tests/classify_cases.s -x none $(B)/classify.o -o $@
 $(B)/test_jit_region: tests/test_jit_region.c $(B)/jit_region.o
 	$(CC) $(CFLAGS) $^ -o $@
 $(B)/test_operands: tests/test_operands.c tests/operand_cases.s $(B)/operands.o
-	$(CC) $(CFLAGS) $^ -o $@
+	$(CC) $(CFLAGS) tests/test_operands.c -x assembler-with-cpp tests/operand_cases.s -x none $(B)/operands.o -o $@
 $(B)/test_mmu: tests/test_mmu.c $(ENGINE)
 	$(CC) $(CFLAGS) tests/test_mmu.c $(ENGINE) -o $@
 

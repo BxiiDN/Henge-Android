@@ -1,3 +1,18 @@
+#if !defined(__APPLE__)
+#define _hv_chain_thunk hv_chain_thunk
+#define _hv_enter hv_enter
+#define _hv_exit hv_exit
+#define _hv_fp_enter hv_fp_enter
+#define _hv_fp_leave hv_fp_leave
+#define _hv_helper hv_helper
+#define _hv_helper_entry hv_helper_entry
+#define _hv_helper_thunk hv_helper_thunk
+#define _hv_ijc_resolve hv_ijc_resolve
+#define _hv_ijc_thunk hv_ijc_thunk
+#define _hv_tlb_refill hv_tlb_refill
+#define _hv_xjump_thunk hv_xjump_thunk
+#endif
+
 // Entering and leaving translated code.
 //
 // hv_enter(HvCpu *cpu, void *block) saves the host's callee-saved registers,
@@ -126,6 +141,58 @@
     ldp x29, x30, [x28, #232]
 .endm
 
+// Linux libc and unoptimized compiler-generated memory operations may use
+// SIMD even when the MMU source is compiled with -mgeneral-regs-only.
+// Preserve guest SIMD and FP state across these lightweight C calls too.
+.macro SAVE_PORTABLE_FP
+#if !defined(__APPLE__)
+    stp q0, q1, [x28, #320]
+    stp q2, q3, [x28, #352]
+    stp q4, q5, [x28, #384]
+    stp q6, q7, [x28, #416]
+    stp q8, q9, [x28, #448]
+    stp q10, q11, [x28, #480]
+    stp q12, q13, [x28, #512]
+    stp q14, q15, [x28, #544]
+    stp q16, q17, [x28, #576]
+    stp q18, q19, [x28, #608]
+    stp q20, q21, [x28, #640]
+    stp q22, q23, [x28, #672]
+    stp q24, q25, [x28, #704]
+    stp q26, q27, [x28, #736]
+    stp q28, q29, [x28, #768]
+    stp q30, q31, [x28, #800]
+    mrs x15, fpcr
+    str x15, [x28, #CPU_FPCR]
+    mrs x15, fpsr
+    str x15, [x28, #CPU_FPSR]
+#endif
+.endm
+.macro LOAD_PORTABLE_FP
+#if !defined(__APPLE__)
+    ldp q0, q1, [x28, #320]
+    ldp q2, q3, [x28, #352]
+    ldp q4, q5, [x28, #384]
+    ldp q6, q7, [x28, #416]
+    ldp q8, q9, [x28, #448]
+    ldp q10, q11, [x28, #480]
+    ldp q12, q13, [x28, #512]
+    ldp q14, q15, [x28, #544]
+    ldp q16, q17, [x28, #576]
+    ldp q18, q19, [x28, #608]
+    ldp q20, q21, [x28, #640]
+    ldp q22, q23, [x28, #672]
+    ldp q24, q25, [x28, #704]
+    ldp q26, q27, [x28, #736]
+    ldp q28, q29, [x28, #768]
+    ldp q30, q31, [x28, #800]
+    ldr x15, [x28, #CPU_FPCR]
+    msr fpcr, x15
+    ldr x15, [x28, #CPU_FPSR]
+    msr fpsr, x15
+#endif
+.endm
+
 _hv_enter:
     stp x29, x30, [sp, #-176]!
     stp x19, x20, [sp, #16]
@@ -243,7 +310,9 @@ _hv_helper_thunk:
     mov sp, x15
     mov x0, x28
     mov x1, x7
+    SAVE_PORTABLE_FP
     bl _hv_tlb_refill
+    LOAD_PORTABLE_FP
     mov x7, x0
     ldr x0, [x28, #CPU_SP]
     mov sp, x0
@@ -314,7 +383,9 @@ _hv_ijc_thunk:
     mov x0, x28
     mov x1, x7
     ldr w2, [x30]
+    SAVE_PORTABLE_FP
     bl _hv_ijc_resolve
+    LOAD_PORTABLE_FP
     mov x6, x0
     ldr x0, [x28, #CPU_SP]
     mov sp, x0
@@ -391,7 +462,9 @@ _hv_xjump_thunk:
     ldr x1, [x7, #8]
     ldr w2, [x7]
     and w2, w2, #0x7fffffff
+    SAVE_PORTABLE_FP
     bl _hv_ijc_resolve
+    LOAD_PORTABLE_FP
     mov x6, x0
     ldr x0, [x28, #CPU_SP]
     mov sp, x0
@@ -432,3 +505,7 @@ _hv_fp_leave:
     mrs x1, fpsr
     str x1, [x0, #CPU_FPSR]
     ret
+
+#if defined(__ELF__)
+.section .note.GNU-stack,"",%progbits
+#endif

@@ -4,15 +4,32 @@
 #define HENGEVM_TEST_HARNESS_H
 
 #ifdef __ASSEMBLER__
+#include "asm_compat.h"
 
 // PROGRAM name ... END name. The JIT runs from _name to _name_end; natively
 // _name_native loads the registers first and the epilogue saves them after.
 .macro PROGRAM name
     .p2align 2
+#ifdef __APPLE__
     .globl _\name\()_native
+#else
+    .globl \name\()_native
+#endif
+#ifdef __APPLE__
     .globl _\name
+#else
+    .globl \name
+#endif
+#ifdef __APPLE__
     .globl _\name\()_end
+#else
+    .globl \name\()_end
+#endif
+#ifdef __APPLE__
 _\name\()_native:
+#else
+\name\()_native:
+#endif
     ldp q0, q1, [x28, #320]
     ldp q2, q3, [x28, #352]
     ldp q4, q5, [x28, #384]
@@ -53,15 +70,27 @@ _\name\()_native:
     ldp x26, x27, [x28, #208]
     ldp x29, x30, [x28, #232]
     ldr x28, [x28, #224]
+#ifdef __APPLE__
 _\name\():
+#else
+\name\():
+#endif
 .endm
 
 .macro END name
+#ifdef __APPLE__
     b _\name\()_end
+#else
+    b \name\()_end
+#endif
+#ifdef __APPLE__
 _\name\()_end:
+#else
+\name\()_end:
+#endif
     stp x0, x1, [sp, #-16]!
-    adrp x0, _hv_native_cpu@PAGE
-    ldr x0, [x0, _hv_native_cpu@PAGEOFF]
+    adrp x0, HV_PAGE(HV_SYMBOL(hv_native_cpu))
+    ldr x0, [x0, HV_PAGEOFF(HV_SYMBOL(hv_native_cpu))]
     stp x2, x3, [x0, #16]
     stp x4, x5, [x0, #32]
     stp x6, x7, [x0, #48]
@@ -103,7 +132,7 @@ _\name\()_end:
     stp q26, q27, [x0, #736]
     stp q28, q29, [x0, #768]
     stp q30, q31, [x0, #800]
-    b _hv_native_return
+    b HV_SYMBOL(hv_native_return)
 .endm
 
 #else

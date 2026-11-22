@@ -1,13 +1,15 @@
+#include "asm_compat.h"
 // Small programs run natively and through the JIT; test_jit.c compares every
 // register, SP, NZCV, FPSR and FPCR afterwards. They do no loads or stores
 // (those come with the MMU tests), but SP is used as an ordinary operand.
 #include "harness.h"
 
+    .arch armv8.4-a
     .text
     .p2align 14
-    .globl _jit_programs_begin
-    .globl _jit_programs_finish
-_jit_programs_begin:
+    .globl HV_SYMBOL(jit_programs_begin)
+    .globl HV_SYMBOL(jit_programs_finish)
+HV_SYMBOL(jit_programs_begin):
 
 PROGRAM arith
     add x0, x1, x2
@@ -208,8 +210,8 @@ END stolen
 PROGRAM pcrel
     adr x0, .
     adr x1, pcrel_target
-    adrp x2, pcrel_target@PAGE
-    adrp x18, pcrel_target@PAGE
+    adrp x2, HV_PAGE(pcrel_target)
+    adrp x18, HV_PAGE(pcrel_target)
     adr x28, .
     sub x3, x1, x0
     b pcrel_target
@@ -266,4 +268,8 @@ PROGRAM pac
 END pac
 
     .p2align 14
-_jit_programs_finish:
+HV_SYMBOL(jit_programs_finish):
+
+#if defined(__ELF__)
+.section .note.GNU-stack,"",%progbits
+#endif

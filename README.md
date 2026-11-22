@@ -1,3 +1,5 @@
+> **Android fork status:** version 0.2 provides an ARM64 CPU host, a serial-only vmapple board, a guest RAM/disk/UART self-test, and bounded read-only ROM experiments for Android phones and tablets. **macOS boot and GPU rendering are not verified.** See [Android build, tests and remaining work](docs/android-port.md). The iOS links below describe the upstream Apple version.
+
 <p align="center">
   <img src="docs/icon.png" width="120" height="120" alt="Henge">
 </p>

@@ -1,6 +1,7 @@
 #include "sysreg.h"
 
-#include <mach/mach_time.h>
+#include "platform.h"
+#include "cpu_features.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -13,8 +14,8 @@
 /* System registers are named by op0:op1:CRn:CRm:op2, which is bits 20..5 of MRS/MSR. */
 #define R(op0, op1, crn, crm, op2) ((op0) << 14 | (op1) << 11 | (crn) << 7 | (crm) << 3 | (op2))
 
-/* ID registers: only features the translator handles. Host features are a
-   superset (Apple M1 and later), so copied instructions always exist. */
+/* ID registers: features the translator handles. Apple M1 and later supply
+   the pass-through instructions; Linux reads additionally mask host features. */
 #define ID_AA64PFR0  0x1100000001110011ull /* EL0/EL1 AArch64, FP+AdvSIMD with FP16, GICv3 sysregs, CSV2, CSV3 */
 #define ID_AA64ISAR0 0x0011100110212120ull /* AES+PMULL, SHA1, SHA2/512, CRC32, LSE, RDM, SHA3, DotProd, FHM, FlagM */
 #define ID_AA64ISAR1 0x0000001110211011ull /* DPB, PAuth (no-op), JSCVT, FCMA, LRCPC2, PACGA, FRINTTS, SB */
@@ -27,7 +28,7 @@
 #define CNTFRQ       24000000ull
 
 static uint64_t counter(void) {
-    return mach_absolute_time(); /* 24 MHz on Apple silicon */
+    return hv_host_ticks(); /* Guest counter frequency is always 24 MHz. */
 }
 
 uint64_t hv_counter(void) {
@@ -116,10 +117,10 @@ static int read_reg(HvCpu *cpu, uint32_t reg, uint64_t *v) {
     case R(3, 0, 0, 0, 0): *v = MIDR; return 0;
     case R(3, 0, 0, 0, 5): *v = cpu->mpidr; return 0;
     case R(3, 0, 0, 0, 6): *v = 0; return 0;                             /* REVIDR */
-    case R(3, 0, 0, 4, 0): *v = ID_AA64PFR0; return 0;
+    case R(3, 0, 0, 4, 0): *v = hv_host_pfr0(ID_AA64PFR0); return 0;
     case R(3, 0, 0, 5, 0): *v = ID_AA64DFR0; return 0;
-    case R(3, 0, 0, 6, 0): *v = ID_AA64ISAR0; return 0;
-    case R(3, 0, 0, 6, 1): *v = ID_AA64ISAR1; return 0;
+    case R(3, 0, 0, 6, 0): *v = hv_host_isar0(ID_AA64ISAR0); return 0;
+    case R(3, 0, 0, 6, 1): *v = hv_host_isar1(ID_AA64ISAR1); return 0;
     case R(3, 0, 0, 7, 0): *v = ID_AA64MMFR0; return 0;
     case R(3, 0, 0, 7, 1): *v = ID_AA64MMFR1; return 0;
     case R(3, 3, 0, 0, 1): *v = CTR_EL0; return 0;
@@ -203,7 +204,7 @@ static int write_reg(HvCpu *cpu, uint32_t reg, uint64_t v) {
     case R(3, 0, 2, 0, 0): { /* a process switch */
         uint64_t old = cpu->ttbr0_el1;
         cpu->ttbr0_el1 = v;
-        if (old != v) cpu->ttbr0_changed_at = mach_absolute_time();
+        if (old != v) cpu->ttbr0_changed_at = hv_host_ticks();
         hv_tlb_switch_user(cpu, old, v);
         hv_ijc_switch(cpu);
         return 0;
@@ -389,7 +390,7 @@ void hv_tlbi_apply(HvCpu *cpu, uint32_t op1, uint32_t crn, uint32_t crm, uint32_
         if (cpu->m->log >= 2)
             fprintf(stderr, "tlbi-all S1_%u_C%u_C%u_%u pc %llx\n", op1, crn, crm, op2, (unsigned long long)pc);
         cpu->m->stats.flush_why[crm == 7 ? 0 : 1]++;
-        uint64_t since_switch = crm == 7 ? mach_absolute_time() - cpu->ttbr0_changed_at : ~0ull; /* 24 MHz ticks */
+        uint64_t since_switch = crm == 7 ? hv_host_ticks() - cpu->ttbr0_changed_at : ~0ull; /* 24 MHz ticks */
         /* HV_SWITCH_FLUSH=1 (testing): macOS 27's xnu follows a process switch between two shared regions with a
            local TLBI VMALLE1, to drop the old region's global entries. Here every process's user entries are put
            aside under its own TTBR0 and its cached branch targets under its own ASID, so nothing of the old one

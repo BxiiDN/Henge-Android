@@ -1,13 +1,17 @@
 #include "vmapple.h"
+#ifdef __APPLE__
 #include "pvg_lite.h"
+#endif
 #include "sysreg.h"
 
 #include <errno.h>
+#ifdef __APPLE__
 #include <mach/mach.h>
 #include <mach/mach_error.h>
 #include <mach/vm_map.h>
-#include <pthread.h>
 #include <pthread/qos.h>
+#endif
+#include <pthread.h>
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -169,6 +173,7 @@ static void gic_msi_write(void *opaque, uint64_t off, uint64_t v, unsigned size)
    pages out of this process's footprint. It allows that once a debugger has
    been attached, which is how an iOS app gets to use JIT at all. Returns NULL
    if it is refused. In pieces, as one memory entry has a size limit. */
+#ifdef __APPLE__
 extern kern_return_t mach_memory_entry_ownership(mach_port_t entry, task_t owner, int ledger_tag, int ledger_flags);
 
 static uint8_t *alloc_no_footprint(uint64_t size) {
@@ -196,6 +201,8 @@ static uint8_t *alloc_no_footprint(uint64_t size) {
     return (uint8_t *)base;
 }
 
+#endif
+
 /* A mapped file's page is slow to touch the first time and as fast as any other
    afterwards, so a background thread gets there before the guest does. Adding
    zero dirties the page without changing it, whatever the guest has written. */
@@ -210,7 +217,9 @@ struct PrefaultArgs {
 static void *prefault_thread(void *arg) {
     struct PrefaultArgs a = *(struct PrefaultArgs *)arg;
     free(arg);
+#ifdef __APPLE__
     pthread_set_qos_class_self_np(QOS_CLASS_UTILITY, 0);
+#endif
     struct timespec t0, t1;
     clock_gettime(CLOCK_MONOTONIC, &t0);
     for (uint64_t off = 0; off < a.size; off += 0x4000) __atomic_fetch_add((volatile uint64_t *)(a.ram + off), 0, __ATOMIC_RELAXED);
@@ -225,7 +234,9 @@ static uint64_t tick_locked(HvMachine *m, HvCpu *cpu) {
     if (cpu->index != 0) return deadline; /* the others only have their own timers to look after */
     hv_pl031_tick(b->rtc);
     if (b->poll) b->poll();
+#ifdef __APPLE__
     hv_pvg_lite_poll(b->pvg);
+#endif
     hv_virtio_blk_poll(b->root_blk);
     hv_virtio_blk_poll(b->aux_blk);
     hv_xhci_poll(b->usb);
@@ -262,10 +273,12 @@ int hv_vmapple_create(HvVmapple *b, HvMachine *m, HvCpu *cpu, uint64_t ram_size,
        The file is unlinked at once and goes away with the process. */
     const char *ram_file = getenv("HV_RAM_FILE");
     b->ram = MAP_FAILED;
+#ifdef __APPLE__
     if (!getenv("HV_RAM_NO_LEDGER")) {
         uint8_t *free_of_footprint = alloc_no_footprint(ram_size);
         if (free_of_footprint) b->ram = free_of_footprint;
     }
+#endif
     if (b->ram == MAP_FAILED && ram_file && *ram_file) {
         int fd = open(ram_file, O_RDWR | O_CREAT | O_TRUNC, 0600);
         if (fd >= 0) {
@@ -291,8 +304,8 @@ int hv_vmapple_create(HvVmapple *b, HvMachine *m, HvCpu *cpu, uint64_t ram_size,
     b->rom = mmap(NULL, ROM_SIZE, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0);
     if (b->rom == MAP_FAILED) return -1;
     /* QEMU maps the firmware as RAM, and so do we. */
-    hv_machine_add_ram(m, VMAPPLE_FIRMWARE, ROM_SIZE, b->rom, 0);
-    hv_machine_add_ram(m, VMAPPLE_MEM, ram_size, b->ram, 0);
+    if (hv_machine_add_ram(m, VMAPPLE_FIRMWARE, ROM_SIZE, b->rom, 0) ||
+        hv_machine_add_ram(m, VMAPPLE_MEM, ram_size, b->ram, 0)) return -1;
 
     b->gic = hv_gicv3_create(m, VMAPPLE_GIC_DIST, VMAPPLE_GIC_REDIST);
     hv_machine_add_mmio(m, VMAPPLE_GIC_MSI, 0x10000, b, gic_msi_read, gic_msi_write, "gic-msi");
@@ -302,7 +315,9 @@ int hv_vmapple_create(HvVmapple *b, HvMachine *m, HvCpu *cpu, uint64_t ram_size,
     b->bdif = hv_bdif_create(m, VMAPPLE_BDOOR, root, aux);
     b->aes = hv_aes_create(m, b->gic, VMAPPLE_AES_1, VMAPPLE_AES_2, 32 + VMAPPLE_IRQ_AES);
     hv_machine_add_mmio(m, VMAPPLE_PVPANIC, 2, b, pvpanic_read, pvpanic_write, "pvpanic");
+#ifdef __APPLE__
     b->pvg = hv_pvg_lite_create(m, b->gic, VMAPPLE_GFX, VMAPPLE_IOSFC, 32 + 0x11, 32 + 0x10);
+#endif
     hv_machine_add_mmio(m, VMAPPLE_RTC_SELECT, 0x4000, b, rtc_select_read, rtc_select_write, "rtc-select");
     avp_regs_create(b, ram_size);
     HvCfgParams p = *cfg;
@@ -363,7 +378,9 @@ void hv_vmapple_destroy(HvVmapple *b) {
     /* Device workers and GPU completions can still touch RAM and the GIC. */
     hv_virtio_blk_destroy(b->root_blk);
     hv_virtio_blk_destroy(b->aux_blk);
+#ifdef __APPLE__
     hv_pvg_lite_destroy(b->pvg);
+#endif
     if (b->vusb) {
         hv_vusb_set_online(b->vusb, 0);
         pthread_mutex_destroy(&b->vusb->mu);

@@ -493,6 +493,38 @@ static void test_aes(void) {
     wr32(fifo, (uint32_t)src);
     wr32(fifo, (uint32_t)dst);
     check("aes-128 ECB known answer", memcmp(ram(dst), ct, 16), 0);
+    /* FIPS-197 AES-192/256 and decrypt vectors exercise every key schedule. */
+    static const uint8_t answers[3][16] = {
+        {0x69,0xc4,0xe0,0xd8,0x6a,0x7b,0x04,0x30,0xd8,0xcd,0xb7,0x80,0x70,0xb4,0xc5,0x5a},
+        {0xdd,0xa9,0x7c,0xa4,0x86,0x4c,0xdf,0xe0,0x6e,0xaf,0x70,0xa0,0xec,0x0d,0x71,0x91},
+        {0x8e,0xa2,0xb7,0xca,0x51,0x67,0x45,0xbf,0xea,0xfc,0x49,0x90,0x4b,0x49,0x60,0x89}};
+    for (unsigned key = 0; key < 3; key++) for (unsigned enc = 0; enc < 2; enc++) {
+        memcpy(ram(src), enc ? pt : answers[key], 16);
+        wr32(fifo, 1u << 28 | enc << 20 | key << 22);
+        for (unsigned i = 0; i < 4 + key * 2; i++) wr32(fifo, 0x03020100u + 0x04040404u * i);
+        wr32(fifo, 5u << 28 | 16); wr32(fifo, 0);
+        wr32(fifo, (uint32_t)src); wr32(fifo, (uint32_t)dst);
+        check("AES FIPS encrypt/decrypt", memcmp(ram(dst), enc ? answers[key] : pt, 16), 0);
+    }
+    /* SP 800-38A F.2.1/F.2.2: AES-128 CBC, two chained blocks. */
+    static const uint8_t cbc_key[16] = {0x2b,0x7e,0x15,0x16,0x28,0xae,0xd2,0xa6,0xab,0xf7,0x15,0x88,0x09,0xcf,0x4f,0x3c};
+    static const uint8_t cbc_plain[32] = {
+        0x6b,0xc1,0xbe,0xe2,0x2e,0x40,0x9f,0x96,0xe9,0x3d,0x7e,0x11,0x73,0x93,0x17,0x2a,
+        0xae,0x2d,0x8a,0x57,0x1e,0x03,0xac,0x9c,0x9e,0xb7,0x6f,0xac,0x45,0xaf,0x8e,0x51};
+    static const uint8_t cbc_cipher[32] = {
+        0x76,0x49,0xab,0xac,0x81,0x19,0xb2,0x46,0xce,0xe9,0x8e,0x9b,0x12,0xe9,0x19,0x7d,
+        0x50,0x86,0xcb,0x9b,0x50,0x72,0x19,0xee,0x95,0xdb,0x11,0x3a,0x91,0x76,0x78,0xb2};
+    for (unsigned enc = 0; enc < 2; enc++) {
+        memcpy(ram(src), enc ? cbc_plain : cbc_cipher, 32);
+        wr32(fifo, 1u << 28 | enc << 20 | 1u << 16);
+        for (unsigned i = 0; i < 4; i++) { uint32_t word; memcpy(&word, cbc_key + i * 4, 4); wr32(fifo, word); }
+        wr32(fifo, 2u << 28);
+        for (unsigned i = 0; i < 4; i++) wr32(fifo, 0x03020100u + 0x04040404u * i);
+        wr32(fifo, 5u << 28 | 32); wr32(fifo, 0);
+        wr32(fifo, (uint32_t)src); wr32(fifo, (uint32_t)dst);
+        check("AES CBC chained known answer", memcmp(ram(dst), enc ? cbc_cipher : cbc_plain, 32), 0);
+    }
+
     wr32(VMAPPLE_AES_1 + 0x1c, 1u << 5);
     wr32(fifo, 8u << 28 | 1u << 27 | 0x42); /* FLAG with interrupt */
     check("aes flag raises SPI 0x12", board.gic->level[32 + VMAPPLE_IRQ_AES], 1);
@@ -596,6 +628,8 @@ int main(void) {
     check("gpio interrupt cleared", board.gic->level[32 + VMAPPLE_IRQ_GPIO], 0);
     test_guest_programs();
 
+    hv_vmapple_destroy(&board);
+    hv_machine_free(&m);
     hv_disk_close(&root);
     hv_disk_close(&aux);
     unlink(root_path);

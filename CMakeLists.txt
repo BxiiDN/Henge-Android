@@ -1,0 +1,93 @@
+cmake_minimum_required(VERSION 3.22)
+project(HengeAndroid LANGUAGES C ASM)
+set(CMAKE_C_STANDARD 11)
+set(CMAKE_C_STANDARD_REQUIRED ON)
+
+if(NOT CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64)$")
+    message(FATAL_ERROR "Henge translates ARM64 to ARM64. Use an ARM64 host or an Android arm64-v8a toolchain.")
+endif()
+if(NOT CMAKE_SYSTEM_NAME MATCHES "^(Linux|Android)$")
+    message(FATAL_ERROR "This CMake build is for Linux/Android. Apple builds use the existing Makefile.")
+endif()
+
+add_library(hengecore STATIC
+    core/classify.c core/operands.c core/translate.c core/dispatch.c
+    core/mmu.c core/memop.c core/exception.c core/sysreg.c core/machine.c
+    host/enter.S host/jit_region_linux.c host/android_probe.c)
+target_include_directories(hengecore PUBLIC core host devices)
+target_compile_definitions(hengecore PUBLIC _GNU_SOURCE)
+target_compile_options(hengecore PRIVATE -Wall -Wextra -Wno-format -march=armv8-a+lse -ffixed-x18)
+set_source_files_properties(core/mmu.c PROPERTIES COMPILE_OPTIONS -mgeneral-regs-only)
+set_target_properties(hengecore PROPERTIES POSITION_INDEPENDENT_CODE ON)
+target_link_libraries(hengecore PUBLIC m)
+if(NOT ANDROID)
+    target_link_libraries(hengecore PUBLIC pthread)
+    if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
+        # GCC lowers the guest's 128-bit compare/exchange to libatomic.
+        # Propagate it to consumers of this static library, after hengecore.
+        target_link_libraries(hengecore PUBLIC atomic)
+    endif()
+endif()
+
+# Portable, serial-only virtual board. No Metal renderer is advertised here.
+add_library(hengecrypto STATIC third_party/mbedtls/library/aes.c third_party/mbedtls/library/platform_util.c)
+set_target_properties(hengecrypto PROPERTIES POSITION_INDEPENDENT_CODE ON)
+target_include_directories(hengecrypto PUBLIC third_party/mbedtls/include host)
+target_compile_definitions(hengecrypto PUBLIC MBEDTLS_CONFIG_FILE="android_crypto_config.h")
+add_library(hengeboard STATIC
+    host/disk.c host/headless.c host/serial_boot.S devices/vmapple.c devices/gicv3.c devices/timer.c
+    devices/pl011.c devices/pl031.c devices/pl061.c devices/cfg.c devices/bdif.c
+    devices/pcie.c devices/virtio.c devices/virtio_blk.c devices/virtio_net.c
+    devices/virtio_input.c devices/virtio_snd.c devices/virtio_usb.c
+    devices/virtio_balloon.c devices/xhci.c devices/aes.c)
+set_target_properties(hengeboard PROPERTIES POSITION_INDEPENDENT_CODE ON)
+target_link_libraries(hengeboard PUBLIC hengecore hengecrypto)
+target_compile_options(hengeboard PRIVATE -Wall -Wextra -Wno-format -ffixed-x18)
+
+option(HENGE_BUILD_TESTS "Build ARM64 engine regression tests" ON)
+if(HENGE_BUILD_TESTS)
+    enable_testing()
+    add_executable(test_devices tests/test_devices.c tests/devices_programs.S tests/harness.S)
+    target_link_libraries(test_devices PRIVATE hengeboard)
+    add_test(NAME devices COMMAND test_devices)
+    set_tests_properties(devices PROPERTIES TIMEOUT 120 RUN_SERIAL TRUE)
+    add_executable(test_headless tests/test_headless.c)
+    target_link_libraries(test_headless PRIVATE hengeboard)
+    add_test(NAME headless COMMAND test_headless)
+    set_tests_properties(headless PROPERTIES TIMEOUT 120 RUN_SERIAL TRUE)
+
+    foreach(name classify operands)
+        if(name STREQUAL "classify")
+            set(cases tests/classify_cases.s)
+        else()
+            set(cases tests/operand_cases.s)
+        endif()
+        set_source_files_properties(${cases} PROPERTIES LANGUAGE ASM COMPILE_FLAGS "-x assembler-with-cpp")
+        add_executable(test_${name} tests/test_${name}.c ${cases})
+        target_link_libraries(test_${name} PRIVATE hengecore)
+        add_test(NAME ${name} COMMAND test_${name})
+    endforeach()
+    foreach(name jit mem exc)
+        add_executable(test_${name} tests/test_${name}.c tests/${name}_programs.S tests/harness.S)
+        target_link_libraries(test_${name} PRIVATE hengecore)
+        add_test(NAME ${name} COMMAND test_${name})
+        set_tests_properties(${name} PROPERTIES TIMEOUT 120)
+    endforeach()
+    foreach(name jit_region mmu shutdown android_host)
+        add_executable(test_${name} tests/test_${name}.c)
+        target_link_libraries(test_${name} PRIVATE hengecore)
+        add_test(NAME ${name} COMMAND test_${name})
+        set_tests_properties(${name} PROPERTIES TIMEOUT 60)
+    endforeach()
+endif()
+
+option(HENGE_ANDROID_APP "Build the Android JNI diagnostic library" OFF)
+if(HENGE_ANDROID_APP)
+    if(NOT ANDROID)
+        message(FATAL_ERROR "HENGE_ANDROID_APP requires the Android NDK toolchain")
+    endif()
+    add_library(hengeandroid SHARED android/app/src/main/cpp/diagnostics.c)
+    target_link_libraries(hengeandroid PRIVATE hengeboard dl)
+    target_compile_options(hengeandroid PRIVATE -Wall -Wextra -ffixed-x18)
+    target_link_options(hengeandroid PRIVATE -Wl,-z,max-page-size=16384)
+endif()

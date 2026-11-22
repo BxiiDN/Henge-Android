@@ -249,7 +249,7 @@ int hv_exception_insn(HvCpu *cpu, uint32_t insn, uint64_t pc) {
         return 1;
     }
     if (opc == 1 && ll == 0) { /* BRK */
-        hv_take_exception(cpu, HV_EXC_SYNC, HV_EC_BRK << 26 | 1u << 25 | imm16, 0, 0, pc);
+        hv_take_exception(cpu, HV_EXC_SYNC, (uint32_t)HV_EC_BRK << 26 | 1u << 25 | imm16, 0, 0, pc);
         return 1;
     }
     /* SMC with no EL3, HVC from EL0, HLT without halting debug, DCPS: undefined. */

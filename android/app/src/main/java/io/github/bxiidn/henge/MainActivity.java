@@ -53,7 +53,7 @@ public final class MainActivity extends Activity {
         scroll.addView(body);
         addText(body, "HENGE / ANDROID", 13, Color.rgb(112, 220, 189), true);
         addText(body, "Mesin mulai dipindahkan.", 30, Color.WHITE, true);
-        addText(body, "Versi pengembangan 0.2\nHP dan tablet ARM64", 15, Color.LTGRAY, false);
+        addText(body, "Versi pengembangan 0.2.1\nHP dan tablet ARM64", 15, Color.LTGRAY, false);
         addText(body, "Belum mendukung boot macOS", 20, Color.rgb(255, 206, 130), true);
         addText(body, "APK ini menguji CPU/JIT Henge dan membaca informasi Vulkan perangkat. "
             + "Renderer macOS dan installer Android belum tersedia.", 16, Color.LTGRAY, false);

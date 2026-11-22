@@ -64,7 +64,7 @@ public final class BootActivity extends Activity {
             v.setPadding(pad,dp(24)+i.getSystemWindowInsetTop(),pad,dp(24)+i.getSystemWindowInsetBottom()); return i;
         });
         scroll.addView(body);
-        text(body,"Henge 0.2 · Boot serial",24);
+        text(body,"Henge 0.2.1 · Boot serial",24);
         text(body,"Uji board bawaan memeriksa RAM, disk virtual dan UART dengan firmware uji Henge. Tidak memerlukan file macOS.",16);
         test = button(body,"Jalankan uji board",() -> start(true));
         text(body,"Percobaan ROM eksternal",20);

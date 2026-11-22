@@ -4,6 +4,22 @@ This fork adds an Android/Linux ARM64 host for Henge's CPU engine and an Android
 
 Initial device target: Xiaomi Pad 6, Snapdragon 870 / Adreno 650. The user reports that Diagnostics 0.1 passed on a physical Xiaomi 23043RP34C (Pad 6), Android 17/API 37, 7.4 GiB RAM: guest arithmetic 42, 24 MHz timer, 4096-byte host pages, Vulkan 1.1.295 / Adreno 650. This is user-provided device evidence, not a remotely observed test. The new 0.2 board/serial path still needs device execution. The APK targets phones and resizable tablets running Android 9/API 28 or newer, ARM64 with SIMD and LSE atomics. Other ARM64 devices are not automatically compatible. Unsupported CPUs are rejected before entering the translator.
 
+## Version 0.2.1: Android shared-library ROM branch fix
+
+The user reported that 0.2 printed `HENGE: RAM + DISK + UART PASS` on Pad 6,
+then returned exit 9 with PC 0x200. The final Android ELF explained the failure:
+the CBZ at ROM offset 0xa0 and terminal B targeted `hv_serial_rom_stop@plt`
+outside the copied ROM. The static Linux test executable did not have this
+shared-library relocation, so its successful test missed the bug.
+
+The firmware now branches to a local assembly label and marks the ROM address
+symbols hidden. `tests/check_serial_rom.py` checks PC-relative branches and
+address references in the final unstripped Android shared library. It rejects
+the original 0.2 binary at offset 0xa0. CI runs this check after APK assembly.
+The expected successful stop remains exit 7 at guest PC 0x1000ac; exit 9 is
+still treated as failure. A serial PASS alone is not accepted as a full pass.
+Replaying the exact ROM bytes extracted from the 0.2 Android shared library under QEMU Cortex-A76 reproduced the user report: serial PASS followed by exit 9 / PC 0x200. Replaying the fixed Android ROM bytes through the same headless VM returned LULUS, exit 7 / PC 0x1000ac. The fix needs a new device run; physical 0.2.1 success is not yet claimed.
+
 ## Version 0.2: serial-only virtual machine
 
 The APK now links the existing vmapple board: GICv3, virtual timer, PL011 UART,
@@ -107,7 +123,7 @@ GCC Linux builds link `libatomic` for 128-bit compare/exchange. QEMU 8.2.2 crash
 
 | Component | Current state | Next acceptance check |
 | --- | --- | --- |
-| CPU/JIT on physical Android | Diagnostics 0.1 passed according to the user's Pad 6 report | Run 0.2 board/serial self-test on the same device |
+| CPU/JIT on physical Android | Diagnostics 0.1 passed according to the user's Pad 6 report | Re-run the 0.2.1 board/serial test after the reproduced 0.2 ROM stop failure |
 | Machine/devices | Serial-only vmapple board linked; test firmware passes RAM/disk/UART | Run matching Apple ROM/disk/aux with identity and inspect serial; macOS boot unverified |
 | GPU | `devices/pvg_metal.m` requires Apple Metal APIs | Implement a Vulkan backend for the guest command protocol and validate command traces |
 | Guest shaders/pipelines | Apple AIR/metallib and serialized Metal pipeline assumptions remain | Translate supported guest shaders to SPIR-V and validate pipeline state/resource semantics |

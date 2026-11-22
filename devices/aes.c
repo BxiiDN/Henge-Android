@@ -1,6 +1,10 @@
 #include "aes.h"
 
+#ifdef __APPLE__
 #include <CommonCrypto/CommonCryptor.h>
+#else
+#include <mbedtls/aes.h>
+#endif
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -92,11 +96,32 @@ static int cmd_data(HvAes *a) {
         return 1;
     }
     uint8_t *tmp = malloc(len ? len : 1);
+    if (!tmp) return 1;
+#ifdef __APPLE__
     size_t moved = 0;
     CCCryptorStatus st = CCCrypt(a->encrypt ? kCCEncrypt : kCCDecrypt, kCCAlgorithmAES, a->cbc ? 0 : kCCOptionECBMode,
                                  k->key, k->len, a->cbc ? (const void *)a->iv[iv_ctx] : NULL, in, len, tmp, len,
                                  &moved);
-    if (st == kCCSuccess) memcpy(out, tmp, len), hv_dma_written(a->m, dst, len);
+    int ok = st == kCCSuccess;
+#else
+    mbedtls_aes_context aes;
+    mbedtls_aes_init(&aes);
+    int mode = a->encrypt ? MBEDTLS_AES_ENCRYPT : MBEDTLS_AES_DECRYPT;
+    int st = a->encrypt ? mbedtls_aes_setkey_enc(&aes, k->key, k->len * 8)
+                        : mbedtls_aes_setkey_dec(&aes, k->key, k->len * 8);
+    if (!st && (len & 15)) st = MBEDTLS_ERR_AES_INVALID_INPUT_LENGTH;
+    if (!st && a->cbc) {
+        uint8_t iv[16];
+        memcpy(iv, a->iv[iv_ctx], sizeof iv);
+        st = mbedtls_aes_crypt_cbc(&aes, mode, len, iv, in, tmp);
+    } else if (!st) {
+        for (uint32_t off = 0; off < len && !st; off += 16)
+            st = mbedtls_aes_crypt_ecb(&aes, mode, in + off, tmp + off);
+    }
+    mbedtls_aes_free(&aes);
+    int ok = st == 0;
+#endif
+    if (ok) memcpy(out, tmp, len), hv_dma_written(a->m, dst, len);
     else if (a->m->log) fprintf(stderr, "hengevm: aes: cipher failed (%d), length %u\n", (int)st, len);
     free(tmp);
     return 1;

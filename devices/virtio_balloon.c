@@ -6,6 +6,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
+#ifndef __APPLE__
+#include <linux/falloc.h>
+#endif
 
 #define INFLATEQ 0
 #define DEFLATEQ 1
@@ -21,11 +24,19 @@
 static void give_back(HvVirtioBalloon *b, uint64_t off, uint64_t len) {
     int bad;
     if (b->ram_fd >= 0) {
+#ifdef __APPLE__
         struct fpunchhole ph = {.fp_flags = 0, .reserved = 0, .fp_offset = (off_t)off, .fp_length = (off_t)len};
         bad = fcntl(b->ram_fd, F_PUNCHHOLE, &ph) != 0;
+#else
+        bad = fallocate(b->ram_fd, FALLOC_FL_PUNCH_HOLE | FALLOC_FL_KEEP_SIZE, (off_t)off, (off_t)len) != 0;
+#endif
         if (!bad) msync(b->ram + off, len, MS_INVALIDATE);
     } else {
+#ifdef __APPLE__
         bad = madvise(b->ram + off, len, MADV_FREE_REUSABLE) != 0;
+#else
+        bad = madvise(b->ram + off, len, MADV_DONTNEED) != 0;
+#endif
     }
     if (bad) {
         if (b->failed++ < 4) fprintf(stderr, "hengevm: balloon: giving back %llu KB at +%llx failed: %s\n",
@@ -36,7 +47,11 @@ static void give_back(HvVirtioBalloon *b, uint64_t off, uint64_t len) {
 }
 
 static void take_back(HvVirtioBalloon *b, uint64_t off, uint64_t len) {
-    if (b->ram_fd < 0) madvise(b->ram + off, len, MADV_FREE_REUSE); /* the guest has them again: count them as used */
+#ifdef __APPLE__
+    if (b->ram_fd < 0) madvise(b->ram + off, len, MADV_FREE_REUSE);
+#else
+    (void)off;
+#endif
     b->taken_back += len / HOST_PAGE;
 }
 

@@ -5,6 +5,7 @@
         android:allowBackup="false" android:fullBackupContent="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:supportsRtl="true">
+        <activity android:name=".BootActivity" android:exported="false" android:resizeableActivity="true" />
         <activity android:name=".MainActivity" android:exported="true" android:resizeableActivity="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

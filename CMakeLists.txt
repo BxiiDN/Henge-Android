@@ -29,9 +29,33 @@ if(NOT ANDROID)
     endif()
 endif()
 
+# Portable, serial-only virtual board. No Metal renderer is advertised here.
+add_library(hengecrypto STATIC third_party/mbedtls/library/aes.c third_party/mbedtls/library/platform_util.c)
+set_target_properties(hengecrypto PROPERTIES POSITION_INDEPENDENT_CODE ON)
+target_include_directories(hengecrypto PUBLIC third_party/mbedtls/include host)
+target_compile_definitions(hengecrypto PUBLIC MBEDTLS_CONFIG_FILE="android_crypto_config.h")
+add_library(hengeboard STATIC
+    host/disk.c host/headless.c host/serial_boot.S devices/vmapple.c devices/gicv3.c devices/timer.c
+    devices/pl011.c devices/pl031.c devices/pl061.c devices/cfg.c devices/bdif.c
+    devices/pcie.c devices/virtio.c devices/virtio_blk.c devices/virtio_net.c
+    devices/virtio_input.c devices/virtio_snd.c devices/virtio_usb.c
+    devices/virtio_balloon.c devices/xhci.c devices/aes.c)
+set_target_properties(hengeboard PROPERTIES POSITION_INDEPENDENT_CODE ON)
+target_link_libraries(hengeboard PUBLIC hengecore hengecrypto)
+target_compile_options(hengeboard PRIVATE -Wall -Wextra -Wno-format -ffixed-x18)
+
 option(HENGE_BUILD_TESTS "Build ARM64 engine regression tests" ON)
 if(HENGE_BUILD_TESTS)
     enable_testing()
+    add_executable(test_devices tests/test_devices.c tests/devices_programs.S tests/harness.S)
+    target_link_libraries(test_devices PRIVATE hengeboard)
+    add_test(NAME devices COMMAND test_devices)
+    set_tests_properties(devices PROPERTIES TIMEOUT 120 RUN_SERIAL TRUE)
+    add_executable(test_headless tests/test_headless.c)
+    target_link_libraries(test_headless PRIVATE hengeboard)
+    add_test(NAME headless COMMAND test_headless)
+    set_tests_properties(headless PROPERTIES TIMEOUT 120 RUN_SERIAL TRUE)
+
     foreach(name classify operands)
         if(name STREQUAL "classify")
             set(cases tests/classify_cases.s)
@@ -63,7 +87,7 @@ if(HENGE_ANDROID_APP)
         message(FATAL_ERROR "HENGE_ANDROID_APP requires the Android NDK toolchain")
     endif()
     add_library(hengeandroid SHARED android/app/src/main/cpp/diagnostics.c)
-    target_link_libraries(hengeandroid PRIVATE hengecore dl)
+    target_link_libraries(hengeandroid PRIVATE hengeboard dl)
     target_compile_options(hengeandroid PRIVATE -Wall -Wextra -ffixed-x18)
     target_link_options(hengeandroid PRIVATE -Wl,-z,max-page-size=16384)
 endif()

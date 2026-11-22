@@ -4,6 +4,10 @@
 .global hv_serial_rom
 .global hv_serial_rom_end
 .global hv_serial_rom_stop
+/* These addresses belong to this blob, never to an ELF PLT/GOT interposer. */
+.hidden hv_serial_rom
+.hidden hv_serial_rom_end
+.hidden hv_serial_rom_stop
 hv_serial_rom:
     mov x0, #0x70000000
     mov x1, #0x1234
@@ -48,11 +52,12 @@ failed:
 print:
     mov x0, #0x20010000
 1:  ldrb w2, [x1], #1
-    cbz w2, hv_serial_rom_stop
+    cbz w2, .Lserial_stop
     str w2, [x0]
     b 1b
 hv_serial_rom_stop:
-    b hv_serial_rom_stop
+.Lserial_stop:
+    b .Lserial_stop
 .balign 8
 request:
     .quad 0x70002000

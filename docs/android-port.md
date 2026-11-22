@@ -2,7 +2,55 @@
 
 This fork adds an Android/Linux ARM64 host for Henge's CPU engine and an Android diagnostic app. It does **not** boot, install, or display macOS on Android yet. The original iOS application remains in `ios/`.
 
-Initial device target: Xiaomi Pad 6, Snapdragon 870 / Adreno 650. No physical Android device has been tested in this workspace. The APK targets phones and resizable tablets running Android 9/API 28 or newer, ARM64 with SIMD and LSE atomics. Other ARM64 devices are not automatically compatible. Unsupported CPUs are rejected before entering the translator.
+Initial device target: Xiaomi Pad 6, Snapdragon 870 / Adreno 650. The user reports that Diagnostics 0.1 passed on a physical Xiaomi 23043RP34C (Pad 6), Android 17/API 37, 7.4 GiB RAM: guest arithmetic 42, 24 MHz timer, 4096-byte host pages, Vulkan 1.1.295 / Adreno 650. This is user-provided device evidence, not a remotely observed test. The new 0.2 board/serial path still needs device execution. The APK targets phones and resizable tablets running Android 9/API 28 or newer, ARM64 with SIMD and LSE atomics. Other ARM64 devices are not automatically compatible. Unsupported CPUs are rejected before entering the translator.
+
+## Version 0.2: serial-only virtual machine
+
+The APK now links the existing vmapple board: GICv3, virtual timer, PL011 UART,
+RTC, PCIe, BDIF boot disk, virtio block devices and AES. Linux/Android uses
+ordinary mmap RAM, portable disk flushes and the already-vendored Mbed TLS AES
+implementation. Apple builds retain CommonCrypto, Mach RAM and Metal paths.
+No replacement GPU device or fake renderer is installed in the Android board.
+
+Open **Uji board dan boot serial**, then **Jalankan uji board**. The embedded
+project-authored ARM64 test firmware starts at the real vmapple ROM address,
+checks a guest RAM store/load, issues a BDIF sector read into guest RAM, checks
+the disk bytes, and writes `HENGE: RAM + DISK + UART PASS` through PL011. The
+512-byte temporary disk contains test data only and is deleted afterwards.
+
+For an external ROM experiment, select a local raw AVPBooter ROM (4 bytes to
+1 MiB, multiple of four), raw root disk and matching auxiliary.bin. Enter the
+original VM's ECID and seed. The auxiliary header offset is 16 KiB. Files must
+be regular, seekable files; disk payloads must be nonempty multiples of 512
+bytes. Android's document picker grants access only to the selected files.
+Descriptors stay open for the run, are duplicated by native code and closed
+after workers join. Disk and auxiliary storage are **read-only**. Guests that
+need persistent writes can fail; this is a bring-up experiment, not a usable
+macOS session or installer.
+
+External runs have one virtual CPU, 512/1024/2048 MiB RAM, 32 MiB JIT, a 30-second
+execution limit, a stop button and up to 32 KiB of live UART output. Returning
+to the background requests stop; rotation preserves the task and report.
+CPU execution uses an owned native thread with asynchronous signals blocked
+and an alternate signal stack, not the Java UI/ART thread. Teardown joins the
+CPU and drains disk workers before unmapping guest RAM. Setup and file-provider
+I/O are outside the guest execution deadline. VM halt reason, final PC and EL
+are included even if the firmware emits no UART output.
+
+0.2 uses application ID `io.github.bxiidn.henge.serial` and label **Henge Serial
+Dev**, allowing installation beside Diagnostics 0.1. Development builds are
+debug signed. No Apple ROM, macOS disk or auxiliary image is bundled, and no
+Apple firmware/macOS boot has been verified on this Android port.
+
+Validation for 0.2: 11 CTest groups pass under GCC/Linux AArch64 and QEMU 10.0.13.
+The board suite performs 143 checks including interrupt delivery, guest UART,
+BDIF, virtio block, balloon and AES-128/192/256 encrypt/decrypt plus chained CBC
+known-answer vectors. The new lifecycle test runs the embedded ROM three times,
+checks a wrong disk really fails, boots an infinite-loop ROM from a file and
+verifies timeout and cancellation, rejects empty/oversized ROMs, invalid aux
+offsets and pipe descriptors, and verifies the root image remains unchanged.
+Android APK assembly and lint are also checked. These are host/build checks;
+0.2 physical-device validation remains outstanding.
 
 ## Implemented
 
@@ -59,11 +107,11 @@ GCC Linux builds link `libatomic` for 128-bit compare/exchange. QEMU 8.2.2 crash
 
 | Component | Current state | Next acceptance check |
 | --- | --- | --- |
-| CPU/JIT on physical Android | Builds; Linux execution tests pass | Repeated probe on Pad 6 with the stock OS and normal app permissions |
-| Full machine/devices | Not linked into this APK | Port `host/vm.c`, disk, virtual devices and lifecycle, then boot to serial output |
+| CPU/JIT on physical Android | Diagnostics 0.1 passed according to the user's Pad 6 report | Run 0.2 board/serial self-test on the same device |
+| Machine/devices | Serial-only vmapple board linked; test firmware passes RAM/disk/UART | Run matching Apple ROM/disk/aux with identity and inspect serial; macOS boot unverified |
 | GPU | `devices/pvg_metal.m` requires Apple Metal APIs | Implement a Vulkan backend for the guest command protocol and validate command traces |
 | Guest shaders/pipelines | Apple AIR/metallib and serialized Metal pipeline assumptions remain | Translate supported guest shaders to SPIR-V and validate pipeline state/resource semantics |
-| Display/input | Diagnostic Activity only | Android Surface presentation and guest touch, keyboard and mouse events |
+| Display/input | Diagnostic and serial Activities; virtual input devices have no Android UI binding | Android Surface presentation and guest touch, keyboard and mouse events |
 | Installer/storage | Existing Swift installer/Apple restore integration | Android storage and restore flow, including cancellation and low-space handling |
 | Audio/network/sharing | Apple app integrations remain | Android audio, network and lifecycle integration tests |
 | Compatibility/performance | No macOS boot or GPU performance evidence | Real device boot, rendered output and sustained-load measurements |

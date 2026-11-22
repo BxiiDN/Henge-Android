@@ -40,7 +40,7 @@ ulimit -s 65520
 ctest --test-dir build/linux --output-on-failure
 ```
 
-For an x86 Linux development host, install `gcc-aarch64-linux-gnu` and `qemu-user`:
+For an x86 Linux development host, install `gcc-aarch64-linux-gnu` and QEMU user-mode 10.0 or newer:
 
 ```sh
 cmake -S . -B build/linux-arm64 \
@@ -52,6 +52,8 @@ QEMU_CPU=max QEMU_STACK_SIZE=67108864 ctest --test-dir build/linux-arm64 --outpu
 The reference instruction tests use newer ARM ISA instructions and are not intended to run unmodified on every phone. The app runs a separate bounded CPU probe.
 
 Local validation: all 9 CTest groups passed under QEMU AArch64 with a static Linux/musl Debug build, including classifier, operands, JIT, memory, exceptions, JIT mappings, MMU, shutdown and the Android host probe. The host probe also passed using QEMU's Cortex-A76 model. The tests exposed signed-shift undefined behavior and SIMD clobbering, which are fixed here. The DC ZVA test uses the guest's specified 64-byte granule independently of the host granule. Android NDK compilation and APK assembly succeeded, with APK v2 signature and 16 KB ZIP/ELF alignment verified. All seven modified assembly sources also compiled to Apple Mach-O, but a full Apple build/runtime was not available. These checks do not replace physical Android execution.
+
+GCC Linux builds link `libatomic` for 128-bit compare/exchange. QEMU 8.2.2 crashes internally (`QEMU internal SIGSEGV`) while running the glibc-linked Android host probe. The same GCC-built binary passes on QEMU 10.0.13. CI uses Ubuntu 26.04 and checks QEMU >= 10.0, with all tests enabled. This host-emulator result does not establish physical Android compatibility.
 
 ## Remaining work
 

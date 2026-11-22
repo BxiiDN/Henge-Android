@@ -22,6 +22,11 @@ set_target_properties(hengecore PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_link_libraries(hengecore PUBLIC m)
 if(NOT ANDROID)
     target_link_libraries(hengecore PUBLIC pthread)
+    if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
+        # GCC lowers the guest's 128-bit compare/exchange to libatomic.
+        # Propagate it to consumers of this static library, after hengecore.
+        target_link_libraries(hengecore PUBLIC atomic)
+    endif()
 endif()
 
 option(HENGE_BUILD_TESTS "Build ARM64 engine regression tests" ON)

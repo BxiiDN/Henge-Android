@@ -54,6 +54,8 @@ jobs:
       - name: Build and lint diagnostic APK
         working-directory: android
         run: bash gradlew --no-daemon assembleDebug lintDebug
+      - name: Verify linked guest ROM stays self-contained
+        run: python3 tests/check_serial_rom.py android/app/build/intermediates/cxx/Debug/*/obj/arm64-v8a/libhengeandroid.so
       - uses: actions/upload-artifact@v4
         with:
           name: Henge-Android-diagnostics-${{ github.sha }}

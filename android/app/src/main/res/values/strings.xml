@@ -1,7 +1,12 @@
 <resources>
-    <string name="app_name">Henge Android Dev</string>
+    <string name="app_name">Henge Serial Dev</string>
     <string name="run_test">Jalankan uji perangkat</string>
     <string name="copy_result">Salin hasil</string>
     <string name="share_result">Bagikan hasil</string>
     <string name="running">Menguji instruksi ARM64 dan memeriksa Vulkan…</string>
+    <string name="open_boot">Uji board dan boot serial</string>
+    <string name="selected_file">%1$s: %2$s</string>
+    <item type="id" name="boot_ram" />
+    <item type="id" name="boot_ecid" />
+    <item type="id" name="boot_seed" />
 </resources>

@@ -12,12 +12,20 @@ permissions:
 
 jobs:
   engine:
-    runs-on: ubuntu-24.04
+    # QEMU 8.2 crashes internally on the glibc-linked Android host probe.
+    # The identical binary passes on QEMU 10.0; keep the full suite enabled.
+    runs-on: ubuntu-26.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - name: Install ARM64 test toolchain
-        run: sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu qemu-user cmake
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu qemu-user cmake
+          aarch64-linux-gnu-gcc --version
+          qemu-aarch64 --version
+          version=$(qemu-aarch64 --version | head -n1 | awk '{print $3}')
+          dpkg --compare-versions "$version" ge 10.0
       - name: Build the real CPU engine and tests
         run: |
           cmake -S . -B build/linux-arm64 -DCMAKE_TOOLCHAIN_FILE=cmake/linux-arm64.cmake -DCMAKE_BUILD_TYPE=Debug
